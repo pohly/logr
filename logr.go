@@ -191,6 +191,12 @@ type Logger struct {
 	level         int
 	sink          LogSink
 	withCallDepth CallDepthLogSink
+
+	// withHelper is set in Init if the log sink supports the interface.
+	//
+	// We only need the function returned by withHelper.GetHelper(), but
+	// cannot store it here because that makes Logger non-comparable,
+	// something that discard_test.go TestComparable depends on.
 	withHelper    HelperLogSink
 }
 
@@ -210,7 +216,7 @@ func (l Logger) Enabled() bool {
 func (l Logger) Info(msg string, keysAndValues ...interface{}) {
 	if l.Enabled() {
 		if l.withHelper != nil {
-			l.withHelper.Helper()
+			l.withHelper.GetHelper()()
 		}
 		l.sink.Info(l.level, msg, keysAndValues...)
 	}
@@ -226,7 +232,7 @@ func (l Logger) Info(msg string, keysAndValues ...interface{}) {
 // triggered this log line, if present.
 func (l Logger) Error(err error, msg string, keysAndValues ...interface{}) {
 	if l.withHelper != nil {
-		l.withHelper.Helper()
+		l.withHelper.GetHelper()()
 	}
 	l.sink.Error(err, msg, keysAndValues...)
 }
@@ -288,21 +294,23 @@ func (l Logger) WithCallDepth(depth int) Logger {
 // users who have helper functions between the "real" call site and
 // the actual calls to Logger methods.
 //
+// In addition to using that new logger instance, callers also must
+// call the returned function.
+//
 // If the underlying log implementation supports a WithCallDepth(int)
 // method, WithCallDepth(1) will be called and the result returned. If
 // it supports a Helper() method, that will be called and the result
 // returned. If the implementation does not support either of these,
 // the original Logger will be returned.
-func (l Logger) Helper() Logger {
+func (l Logger) Helper() (func(), Logger) {
 	if l.withCallDepth != nil {
 		l.sink = l.withCallDepth.WithCallDepth(1)
-		return l
+		return func() {}, l
 	}
 	if l.withHelper != nil {
-		l.sink = l.withHelper.Helper()
-		return l
+		return l.withHelper.GetHelper(), l
 	}
-	return l
+	return func() {}, l
 }
 
 // contextKey is how we find Loggers in a context.Context.
@@ -427,7 +435,7 @@ type CallDepthLogSink interface {
 // This is an optional interface and implementations are not required to
 // support it.
 type HelperLogSink interface {
-	// Helper returns a log sink that will skip the direct caller
-	// when logging call site information.
-	Helper() LogSink
+	// GetHelper returns a function that must be called to mark the direct caller
+	// as helper function when logging call site information.
+	GetHelper() func()
 }
