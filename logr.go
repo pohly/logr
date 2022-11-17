@@ -237,8 +237,10 @@ func (l Logger) WithSink(sink LogSink) Logger {
 // Glass" in the package documentation). Normally the sink should be used only
 // indirectly.
 type Logger struct {
-	sink  LogSink
-	level int
+	sink        LogSink
+	level       int
+	ctx         context.Context
+	contextKeys *[]ContextKey // Has to be a pointer to keep the struct comparable.
 }
 
 // Enabled tests whether this Logger is enabled.  For example, commandline
@@ -258,6 +260,7 @@ func (l Logger) Info(msg string, keysAndValues ...interface{}) {
 		if withHelper, ok := l.sink.(CallStackHelperLogSink); ok {
 			withHelper.GetCallStackHelper()()
 		}
+		keysAndValues = l.appendFromContext(keysAndValues)
 		l.sink.Info(l.level, msg, keysAndValues...)
 	}
 }
@@ -279,6 +282,7 @@ func (l Logger) Error(err error, msg string, keysAndValues ...interface{}) {
 	if withHelper, ok := l.sink.(CallStackHelperLogSink); ok {
 		withHelper.GetCallStackHelper()()
 	}
+	keysAndValues = l.appendFromContext(keysAndValues)
 	l.sink.Error(err, msg, keysAndValues...)
 }
 
@@ -371,12 +375,62 @@ func (l Logger) IsZero() bool {
 	return l.sink == nil
 }
 
+// WithContext stores a context in the Logger. If the Logger also has keys set
+// that it is meant to log from a context, then the values for those keys from
+// the given context will be added to all log entries.
+func (l Logger) WithContext(ctx context.Context) Logger {
+	l.ctx = ctx
+	return l
+}
+
+// WithContextValues extends the list of context keys and the name for them. When
+// given a context through WithContext later, the Logger will extract the
+// values for these keys and log them as additional key/value pairs.
+func (l Logger) WithContextValues(keys ...ContextKey) Logger {
+	if l.contextKeys == nil {
+		// Copy the parameters to avoid surprises when the caller changes the content
+		// of the parameter slice later.
+		contextKeys := make([]ContextKey, 0, len(keys))
+		contextKeys = append(contextKeys, keys...)
+		l.contextKeys = &contextKeys
+	} else {
+		// We must create a new slice because the existing one is shared between
+		// Logger instances.
+		contextKeys := make([]ContextKey, 0, len(*l.contextKeys)+len(keys))
+		contextKeys = append(contextKeys, *l.contextKeys...)
+		contextKeys = append(contextKeys, keys...)
+		l.contextKeys = &contextKeys
+	}
+	return l
+}
+
+func (l Logger) appendFromContext(keysAndValues []interface{}) []interface{} {
+	if l.ctx == nil || l.contextKeys == nil {
+		return keysAndValues
+	}
+	for _, key := range *l.contextKeys {
+		if value := l.ctx.Value(key.Key); value != nil {
+			keysAndValues = append(keysAndValues, key.Name, value)
+		}
+	}
+	return keysAndValues
+}
+
+// ContextKey defines the string that is to be used in a key/value pair when
+// logging the value that is stored in a context for the given key.
+type ContextKey struct {
+	Key  interface{}
+	Name string
+}
+
 // contextKey is how we find Loggers in a context.Context.
 type contextKey struct{}
 
 // FromContext returns a Logger from ctx or an error if no Logger is found.
+// The value returned has already had WithContext called.
 func FromContext(ctx context.Context) (Logger, error) {
 	if v, ok := ctx.Value(contextKey{}).(Logger); ok {
+		v.ctx = ctx
 		return v, nil
 	}
 
@@ -396,8 +450,10 @@ func (notFoundError) IsNotFound() bool {
 
 // FromContextOrDiscard returns a Logger from ctx.  If no Logger is found, this
 // returns a Logger that discards all log messages.
+// The value returned has already had WithContext called.
 func FromContextOrDiscard(ctx context.Context) Logger {
 	if v, ok := ctx.Value(contextKey{}).(Logger); ok {
+		v.ctx = ctx
 		return v
 	}
 

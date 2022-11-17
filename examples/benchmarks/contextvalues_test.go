@@ -75,11 +75,8 @@ func newContext(ctx context.Context, j, mod, v int) {
 	// This is the currently recommended way of adding a value to a context
 	// and ensuring that all future log calls include it.  Trace IDs might
 	// get handled like this.
-	logger := logr.FromContextOrDiscard(ctx)
-	logger = logger.WithValues("i", 1, "j", 2)
 	ctx = context.WithValue(ctx, contextKey1{}, 1)
 	ctx = context.WithValue(ctx, contextKey2{}, 2)
-	ctx = logr.NewContext(ctx, logger)
 	useContext(ctx, j, mod, v)
 }
 
@@ -90,7 +87,7 @@ func useContext(ctx context.Context, j, mod, v int) {
 	}
 }
 
-const expectedOutput = `{"logger":"","level":0,"msg":"ping","i":1,"j":2,"string":"hello world","int":1,"float":1}`
+const expectedOutput = `{"logger":"","level":0,"msg":"ping","string":"hello world","int":1,"float":1,"i":1,"j":2}`
 
 func setup(b *testing.B, v int, expectedCalls int64) context.Context {
 	var actualCalls int64
@@ -105,5 +102,9 @@ func setup(b *testing.B, v int, expectedCalls int64) context.Context {
 		}
 		actualCalls++
 	}, funcr.Options{})
+	// This exercises two different code paths: setting up the initial
+	// slice and extending it later.
+	logger = logger.WithContextValues(logr.ContextKey{Key: contextKey1{}, Name: "i"})
+	logger = logger.WithContextValues(logr.ContextKey{Key: contextKey2{}, Name: "j"})
 	return logr.NewContext(context.Background(), logger)
 }
