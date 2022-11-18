@@ -237,10 +237,9 @@ func (l Logger) WithSink(sink LogSink) Logger {
 // Glass" in the package documentation). Normally the sink should be used only
 // indirectly.
 type Logger struct {
-	sink        LogSink
-	level       int
-	ctx         context.Context
-	contextKeys *[]ContextKey // Has to be a pointer to keep the struct comparable.
+	sink  LogSink
+	level int
+	ctx   context.Context
 }
 
 // Enabled tests whether this Logger is enabled.  For example, commandline
@@ -260,12 +259,13 @@ func (l Logger) Info(msg string, keysAndValues ...interface{}) {
 		if withHelper, ok := l.sink.(CallStackHelperLogSink); ok {
 			withHelper.GetCallStackHelper()()
 		}
-		sink := l.sink
-		contextKeysAndValues := l.valuesFromContext()
-		if len(contextKeysAndValues) > 0 {
-			sink = sink.WithValues(contextKeysAndValues...)
+		if l.ctx != nil {
+			if contextLogSink, ok := l.sink.(ContextLogSink); ok {
+				contextLogSink.WithContext(l.ctx).Info(l.level, msg, keysAndValues...)
+				return
+			}
 		}
-		sink.Info(l.level, msg, keysAndValues...)
+		l.sink.Info(l.level, msg, keysAndValues...)
 	}
 }
 
@@ -286,10 +286,11 @@ func (l Logger) Error(err error, msg string, keysAndValues ...interface{}) {
 	if withHelper, ok := l.sink.(CallStackHelperLogSink); ok {
 		withHelper.GetCallStackHelper()()
 	}
-	sink := l.sink
-	contextKeysAndValues := l.valuesFromContext()
-	if len(contextKeysAndValues) > 0 {
-		sink = sink.WithValues(contextKeysAndValues...)
+	if l.ctx != nil {
+		if contextLogSink, ok := l.sink.(ContextLogSink); ok {
+			contextLogSink.WithContext(l.ctx).Error(err, msg, keysAndValues...)
+			return
+		}
 	}
 	l.sink.Error(err, msg, keysAndValues...)
 }
@@ -391,45 +392,13 @@ func (l Logger) WithContext(ctx context.Context) Logger {
 	return l
 }
 
-// WithContextValues extends the list of context keys and the name for them. When
-// given a context through WithContext later, the Logger will extract the
-// values for these keys and log them as additional key/value pairs.
-func (l Logger) WithContextValues(keys ...ContextKey) Logger {
-	if l.contextKeys == nil {
-		// Copy the parameters to avoid surprises when the caller changes the content
-		// of the parameter slice later.
-		contextKeys := make([]ContextKey, 0, len(keys))
-		contextKeys = append(contextKeys, keys...)
-		l.contextKeys = &contextKeys
-	} else {
-		// We must create a new slice because the existing one is shared between
-		// Logger instances.
-		contextKeys := make([]ContextKey, 0, len(*l.contextKeys)+len(keys))
-		contextKeys = append(contextKeys, *l.contextKeys...)
-		contextKeys = append(contextKeys, keys...)
-		l.contextKeys = &contextKeys
-	}
-	return l
-}
-
-func (l Logger) valuesFromContext() []interface{} {
-	if l.ctx == nil || l.contextKeys == nil {
-		return nil
-	}
-	keysAndValues := make([]interface{}, 0, 2*len(*l.contextKeys))
-	for _, key := range *l.contextKeys {
-		if value := l.ctx.Value(key.Key); value != nil {
-			keysAndValues = append(keysAndValues, key.Name, value)
-		}
-	}
-	return keysAndValues
-}
-
-// ContextKey defines the string that is to be used in a key/value pair when
-// logging the value that is stored in a context for the given key.
-type ContextKey struct {
-	Key  interface{}
-	Name string
+// ContextLogSink is an optional interface that a LogSink can implement
+// to receive a context. It can use that context to extract additional
+// values and log them.
+type ContextLogSink interface {
+	// WithContext gets called by Logger.Info and Logger.Error to inform
+	// the LogSink about the current context if one is available.
+	WithContext(ctx context.Context) LogSink
 }
 
 // contextKey is how we find Loggers in a context.Context.

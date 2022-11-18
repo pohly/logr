@@ -101,10 +101,11 @@ func setup(b *testing.B, v int, expectedCalls int64) context.Context {
 			b.Fatalf("expected %s, got %s", expectedOutput, actualOutput)
 		}
 		actualCalls++
-	}, funcr.Options{})
-	// This exercises two different code paths: setting up the initial
-	// slice and extending it later.
-	logger = logger.WithContextValues(logr.ContextKey{Key: contextKey1{}, Name: "i"})
-	logger = logger.WithContextValues(logr.ContextKey{Key: contextKey2{}, Name: "j"})
+	}, funcr.Options{
+		FromContextKeys: []funcr.ContextKey{
+			funcr.ContextKey{Key: contextKey1{}, Name: "i"},
+			funcr.ContextKey{Key: contextKey2{}, Name: "j"},
+		},
+	})
 	return logr.NewContext(context.Background(), logger)
 }

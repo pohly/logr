@@ -36,6 +36,7 @@ package funcr
 
 import (
 	"bytes"
+	"context"
 	"encoding"
 	"encoding/json"
 	"fmt"
@@ -135,6 +136,10 @@ type Options struct {
 	// depth has been exceeded.  If this field is not specified, a default
 	// value will be used.
 	MaxLogDepth int
+
+	// The set of keys for values that are to be extracted from a context,
+	// if one is available.
+	FromContextKeys []ContextKey
 }
 
 // MessageClass indicates which category or categories of messages to consider.
@@ -151,6 +156,13 @@ const (
 	Error
 )
 
+// ContextKey defines the string that is to be used in a key/value pair when
+// logging the value that is stored in a context for the given key.
+type ContextKey struct {
+	Key  interface{}
+	Name string
+}
+
 // fnlogger inherits some of its LogSink implementation from Formatter
 // and just needs to add some glue code.
 type fnlogger struct {
@@ -164,6 +176,21 @@ func (l fnlogger) WithName(name string) logr.LogSink {
 }
 
 func (l fnlogger) WithValues(kvList ...interface{}) logr.LogSink {
+	l.Formatter.AddValues(kvList)
+	return &l
+}
+
+func (l fnlogger) WithContext(ctx context.Context) logr.LogSink {
+	if len(l.Formatter.opts.FromContextKeys) == 0 {
+		return &l
+	}
+
+	var kvList []interface{}
+	for _, key := range l.Formatter.opts.FromContextKeys {
+		if value := ctx.Value(key.Key); value != nil {
+			kvList = append(kvList, key.Name, value)
+		}
+	}
 	l.Formatter.AddValues(kvList)
 	return &l
 }
