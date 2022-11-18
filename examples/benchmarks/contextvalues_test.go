@@ -89,16 +89,16 @@ func useContext(ctx context.Context, j, mod, v int) {
 
 const expectedOutput = `{"logger":"","level":0,"msg":"ping","i":1,"j":2,"string":"hello world","int":1,"float":1}`
 
-func setup(b *testing.B, v int, expectedCalls int64) context.Context {
+func setup(tb testing.TB, v int, expectedCalls int64) context.Context {
 	var actualCalls int64
-	b.Cleanup(func() {
+	tb.Cleanup(func() {
 		if actualCalls != expectedCalls {
-			b.Errorf("expected %d calls to Info, got %d", expectedCalls, actualCalls)
+			tb.Errorf("expected %d calls to Info, got %d", expectedCalls, actualCalls)
 		}
 	})
 	logger := funcr.NewJSON(func(actualOutput string) {
 		if actualOutput != expectedOutput {
-			b.Fatalf("expected %s, got %s", expectedOutput, actualOutput)
+			tb.Fatalf("expected %s, got %s", expectedOutput, actualOutput)
 		}
 		actualCalls++
 	}, funcr.Options{
@@ -108,4 +108,10 @@ func setup(b *testing.B, v int, expectedCalls int64) context.Context {
 		},
 	})
 	return logr.NewContext(context.Background(), logger)
+}
+
+func TestFromContext(t *testing.T) {
+	expectedCalls := int64(iterationsPerOp) / 100
+	ctx := setup(t, 1, expectedCalls)
+	newContext(ctx, 0, 1, 0)
 }
