@@ -260,8 +260,12 @@ func (l Logger) Info(msg string, keysAndValues ...interface{}) {
 		if withHelper, ok := l.sink.(CallStackHelperLogSink); ok {
 			withHelper.GetCallStackHelper()()
 		}
-		keysAndValues = l.appendFromContext(keysAndValues)
-		l.sink.Info(l.level, msg, keysAndValues...)
+		sink := l.sink
+		contextKeysAndValues := l.valuesFromContext()
+		if len(contextKeysAndValues) > 0 {
+			sink = sink.WithValues(contextKeysAndValues...)
+		}
+		sink.Info(l.level, msg, keysAndValues...)
 	}
 }
 
@@ -282,7 +286,11 @@ func (l Logger) Error(err error, msg string, keysAndValues ...interface{}) {
 	if withHelper, ok := l.sink.(CallStackHelperLogSink); ok {
 		withHelper.GetCallStackHelper()()
 	}
-	keysAndValues = l.appendFromContext(keysAndValues)
+	sink := l.sink
+	contextKeysAndValues := l.valuesFromContext()
+	if len(contextKeysAndValues) > 0 {
+		sink = sink.WithValues(contextKeysAndValues...)
+	}
 	l.sink.Error(err, msg, keysAndValues...)
 }
 
@@ -404,10 +412,11 @@ func (l Logger) WithContextValues(keys ...ContextKey) Logger {
 	return l
 }
 
-func (l Logger) appendFromContext(keysAndValues []interface{}) []interface{} {
+func (l Logger) valuesFromContext() []interface{} {
 	if l.ctx == nil || l.contextKeys == nil {
-		return keysAndValues
+		return nil
 	}
+	keysAndValues := make([]interface{}, 0, 2*len(*l.contextKeys))
 	for _, key := range *l.contextKeys {
 		if value := l.ctx.Value(key.Key); value != nil {
 			keysAndValues = append(keysAndValues, key.Name, value)
