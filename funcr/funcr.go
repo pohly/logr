@@ -245,9 +245,6 @@ const (
 	outputJSON
 )
 
-// PseudoStruct is a list of key-value pairs that gets logged as a struct.
-type PseudoStruct []interface{}
-
 // render produces a log line, ready to use.
 func (f Formatter) render(builtins, args []interface{}) string {
 	// Empirically bytes.Buffer is faster than strings.Builder for this.
