@@ -314,6 +314,11 @@ func (l Logger) V(level int) Logger {
 	return l
 }
 
+// GetV returns the verbosity level of the logger.
+func (l Logger) GetV() int {
+	return l.level
+}
+
 // WithValues returns a new Logger instance with additional key/value pairs.
 // See Info for documentation on how key/value pairs work.
 func (l Logger) WithValues(keysAndValues ...any) Logger {
