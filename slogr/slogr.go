@@ -30,6 +30,12 @@ import (
 // In the output the logr verbosity level gets negated, so V(4) becomes
 // slog.LevelDebug.
 func NewLogr(handler slog.Handler) logr.Logger {
+	if handler, ok := handler.(*slogHandler); ok {
+		if handler.sink == nil {
+			return logr.Discard()
+		}
+		return logr.New(handler.sink).V(int(handler.level))
+	}
 	return logr.New(&slogSink{handler: handler})
 }
 
@@ -42,5 +48,8 @@ func NewLogr(handler slog.Handler) logr.Logger {
 // slog.LevelDebug when using a logr.Logger where verbosity was modified with
 // V(4).
 func NewSlog(logger logr.Logger) slog.Handler {
+	if sink, ok := logger.GetSink().(*slogSink); ok && logger.GetV() == 0 {
+		return sink.handler
+	}
 	return &slogHandler{sink: logger.GetSink(), level: slog.Level(logger.GetV())}
 }

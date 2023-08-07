@@ -37,6 +37,11 @@ var _ slog.Handler = &slogHandler{}
 // groupSeparator is used to concatenate WithGroup names and attribute keys.
 const groupSeparator = "."
 
+// GetLevel is used for black box unit testing.
+func (l *slogHandler) GetLevel() slog.Level {
+	return l.level
+}
+
 func (l *slogHandler) Enabled(ctx context.Context, level slog.Level) bool {
 	return l.sink != nil && (level >= slog.LevelError || l.sink.Enabled(l.levelFromSlog(level)))
 }
